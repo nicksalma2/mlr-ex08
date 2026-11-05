@@ -8,10 +8,10 @@ I also tested it using leaf images displayed on my computer screen. The model im
 To make sure the web application was producing the same results as the original model, I uploaded `check_image.jpg` and compared its predictions with the values stored in `check_expected.json`.
 The results were almost exactly the same as those from the notebook:
 
-- Apple: ~0.8296
-- Cherry: ~0.1679
-- Chestnut: ~0.0025
-- Maple: ~0.0000037
+- Apple: 0.8296
+- Cherry: 0.1679
+- Chestnut: 0.0025
+- Maple: 0.0000037
 
 The largest difference between the web application and the notebook was only around \(2.8 \times 10^{-6}\). This is extremely small and comfortably meets the requirement of matching the predictions to three decimal places.
 
