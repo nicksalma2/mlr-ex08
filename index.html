@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1512">
+<title>Leaf Classifier — MLR Exercise 8</title>
+<style>
+  :root {
+    --bg: #0f1512; --panel: #17201b; --ink: #e8f0ea; --muted: #9fb3a6;
+    --line: #2a3a31; --accent: #4ade80; --bar: #2f6f4e; --warn: #fbbf24; --bad: #f87171;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f4f7f4; --panel: #ffffff; --ink: #12201a; --muted: #5b6f64;
+      --line: #d8e2da; --accent: #15803d; --bar: #bbf0d1; --warn: #92400e; --bad: #b91c1c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+    max-width: 620px; margin-inline: auto;
+  }
+  h1 { font-size: 1.25rem; margin: 0 0 2px; letter-spacing: .2px; }
+  p.sub { margin: 0 0 14px; color: var(--muted); font-size: .85rem; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-bottom: 14px; }
+  video, canvas.snap { width: 100%; aspect-ratio: 1 / 1; background: #000; border-radius: 10px; display: block; object-fit: cover; }
+  .crop-guide { position: relative; }
+  .crop-guide::after {
+    content: "central square is classified"; position: absolute; left: 8px; bottom: 8px;
+    font-size: .7rem; color: #fff; background: rgba(0,0,0,.55); padding: 3px 7px; border-radius: 999px;
+  }
+  button, .filelabel {
+    appearance: none; border: 1px solid var(--line); background: var(--accent); color: #06240f;
+    font: inherit; font-weight: 600; padding: 12px 16px; border-radius: 11px; width: 100%; cursor: pointer;
+  }
+  button.secondary, .filelabel { background: transparent; color: var(--ink); font-weight: 500; }
+  button:disabled { opacity: .55; cursor: default; }
+  input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  #status { font-size: .85rem; color: var(--muted); min-height: 1.3em; }
+  #status.err { color: var(--bad); }
+  #status.warn { color: var(--warn); }
+  ol.results { list-style: none; margin: 0; padding: 0; }
+  ol.results li { margin: 0 0 11px; }
+  ol.results li:last-child { margin-bottom: 0; }
+  .lab { display: flex; justify-content: space-between; font-size: .9rem; margin-bottom: 4px; gap: 10px; }
+  .lab .name { font-weight: 600; }
+  .lab .name.top::after { content: " • top"; color: var(--accent); font-weight: 500; }
+  .lab .p { font-variant-numeric: tabular-nums; color: var(--muted); }
+  .track { height: 10px; background: var(--line); border-radius: 999px; overflow: hidden; }
+  .fill { height: 100%; width: 0; background: var(--bar); border-radius: 999px; transition: width .18s linear; }
+  .fill.top { background: var(--accent); }
+  details { margin-top: 10px; font-size: .8rem; color: var(--muted); }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .78rem; word-break: break-all; }
+  .qr { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  #qrcanvas { border: 8px solid #fff; border-radius: 4px; width: 168px; height: 168px; flex: 0 0 auto; }
+  .qr .meta { flex: 1 1 200px; min-width: 180px; }
+  .qr h2 { font-size: .95rem; margin: 0 0 6px; }
+  .qr a { color: var(--accent); font-weight: 600; overflow-wrap: anywhere; }
+  .hint { font-size: .78rem; color: var(--muted); margin-top: 8px; }
+  #selftest { white-space: pre-wrap; font-family: ui-monospace, Menlo, monospace; font-size: .74rem; }
+</style>
+</head>
+<body>
+<h1>Leaf classifier</h1>
+<p class="sub">apple · cherry · chestnut · maple &nbsp;—&nbsp; <span id="spec-summary">loading model…</span></p>
+
+<div class="panel">
+  <div class="crop-guide"><video id="video" playsinline autoplay muted aria-label="Camera preview"></video></div>
+  <canvas id="probe" width="96" height="96" hidden></canvas>
+  <div class="row" style="margin-top:12px">
+    <button id="start">Start camera</button>
+    <button id="stop" class="secondary" disabled>Stop</button>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <input type="file" id="file" accept="image/*">
+    <label for="file" class="filelabel secondary">…or choose a photo (no camera needed)</label>
+  </div>
+  <p id="status" role="status">Tap “Start camera”, or pick a photo.</p>
+</div>
+
+<div class="panel">
+  <ol class="results" id="results"></ol>
+  <details>
+    <summary>pipeline &amp; raw output</summary>
+    <div id="pipeline"></div>
+  </details>
+</div>
+
+<div class="panel qr">
+  <canvas id="qrcanvas" width="168" height="168" aria-label="QR code linking to this page"></canvas>
+  <div class="meta">
+    <h2>Open on your phone</h2>
+    <p style="margin:0 0 6px">Scan this QR code with the iPhone camera app:</p>
+    <p style="margin:0"><a id="qrlink" href="#" rel="me">this page</a></p>
+    <p class="hint" id="qrnote">QR is generated in your browser from the URL below — no QR web service is involved.</p>
+  </div>
+  <pre id="selftest"></pre>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script type="module">
+/* ------------------------------------------------------------------ *
+ * Leaf classifier — plain JS + onnxruntime-web from a CDN.
+ * Preprocessing is driven by model_info.json exactly:
+ *   central square crop -> resize to input_size -> RGB /255 -> (x-mean)/std -> 1x3xSxS NCHW
+ * ------------------------------------------------------------------ */
+
+// Final public GitHub Pages URL of this page. Single source of truth for the QR code
+// and the clickable link, so they can never disagree with each other.
+const APP_URL = 'https://nicksalma2.github.io/mlr-ex08/';
+
+// Fallbacks, used only if model_info.json cannot be fetched; then we say so on screen.
+const FALLBACK_SPEC = { classes: ['apple', 'cherry', 'chestnut', 'maple'], input_size: 96, mean: [0.485, 0.456, 0.406], std: [0.229, 0.224, 0.225] };
+
+// Pinned first, newest first. iOS Safari needs WASM SIMD (iOS 15+); all of these ship it.
+const ORT_URLS = [
+  'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/ort.bundle.min.mjs',
+  'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.bundle.min.mjs',
+  'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.bundle.min.mjs',
+];
+const MODEL_URL = new URL('leaf_model.onnx', location.href);
+
+const $ = (id) => document.getElementById(id);
+const video = $('video'), probe = $('probe'), statusEl = $('status');
+const pctx = probe.getContext('2d', { willReadFrequently: true });
+
+let ort = null, session = null, inputName = null, outputName = null;
+let spec = { ...FALLBACK_SPEC }, specFromDisk = false;
+let stream = null, rafId = 0, busy = false, lastRun = 0;
+let lastProbs = null;
+
+const setStatus = (msg, kind = '') => { statusEl.textContent = msg; statusEl.className = kind; };
+
+/* ---------------- spec ---------------- */
+async function loadSpec() {
+  try {
+    const r = await fetch(new URL('model_info.json', location.href), { cache: 'no-cache' });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = await r.json();
+    if (!Array.isArray(j.classes) || !j.classes.length || !j.input_size || !j.mean || !j.std) {
+      throw new Error('model_info.json is missing required fields');
+    }
+    spec = { classes: j.classes, input_size: Number(j.input_size), mean: j.mean.map(Number), std: j.std.map(Number) };
+    specFromDisk = true;
+  } catch (e) {
+    console.warn('model_info.json unavailable, using built-in constants:', e);
+  }
+  probe.width = probe.height = spec.input_size;
+  $('spec-summary').textContent =
+    `${spec.classes.length} classes · ${spec.input_size}×${spec.input_size} · mean [${spec.mean}] std [${spec.std}]` +
+    (specFromDisk ? '' : ' (built-in copy: model_info.json not loaded)');
+  $('pipeline').innerHTML =
+    `input <code>${inputName ?? '?'} = [1, 3, ${spec.input_size}, ${spec.input_size}]</code> float32, ` +
+    `NCHW, RGB scaled to 0–1 then <code>(x − mean)/std</code> per channel. ` +
+    `Central square of the frame, resized with the browser's high-quality resampler.`;
+}
+
+/* ---------------- model ---------------- */
+async function loadOrt() {
+  let lastErr;
+  for (const url of ORT_URLS) {
+    try {
+      const mod = await import(/* @vite-ignore */ url);
+      const o = mod.default && mod.default.InferenceSession ? mod.default : mod;
+      if (!o?.InferenceSession) throw new Error('no InferenceSession in module');
+      // GitHub Pages sends no COOP/COEP headers, so SharedArrayBuffer is unavailable:
+      // force single-threaded WASM or iOS/Safari workers fail to boot.
+      o.env.wasm.numThreads = 1;
+      o.env.wasm.proxy = false;
+      const m = /npm\/onnxruntime-web@([^/]+)\//.exec(url);
+      if (m) o.env.wasm.wasmPaths = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${m[1]}/dist/`;
+      ort = o;
+      console.log('ORT loaded from', url, 'version', o.version);
+      return o;
+    } catch (e) { lastErr = e; console.warn('ORT candidate failed:', url, e); }
+  }
+  throw new Error(`could not load onnxruntime-web from any CDN candidate: ${lastErr?.message}`);
+}
+
+async function loadModel() {
+  const buf = await (await fetch(MODEL_URL)).arrayBuffer();
+  let err;
+  for (const provider of ['webgpu', 'wasm']) {
+    try {
+      session = await ort.InferenceSession.create(buf, { executionProviders: [provider], graphOptimizationLevel: 'all' });
+      console.log('session on', provider);
+      break;
+    } catch (e) { err = e; }
+  }
+  if (!session) throw new Error(`failed to create session: ${err?.message}`);
+  inputName = session.inputNames[0];
+  outputName = session.outputNames[0];
+  const dims = session.inputDims?.[0];
+  if (Array.isArray(dims) && dims.length === 4) {
+    const [, c, h, w] = dims;
+    if (typeof h === 'number' && (h !== spec.input_size || w !== spec.input_size || c !== 3)) {
+      console.warn('model input dims disagree with model_info.json', dims, spec.input_size);
+    }
+  }
+  $('pipeline').innerHTML =
+    `input <code>${inputName} = [1, 3, ${spec.input_size}, ${spec.input_size}]</code> float32 NCHW, ` +
+    `output <code>${outputName}</code>, backend <code>${session.inputNames ? (ort.env.wasm.numThreads === 1 ? 'wasm (1 thread)' : 'wasm') : '?'}</code>. ` +
+    `RGB 0–1 then <code>(x − mean)/std</code> per channel; central square resized with high-quality filtering.`;
+}
+
+/* ---------------- preprocessing ---------------- */
+// Draws the central square of any source into the 96x96 probe canvas and builds the tensor.
+function sourceToTensor(src, srcW, srcH) {
+  const S = spec.input_size;
+  const side = Math.min(srcW, srcH);
+  const sx = (srcW - side) / 2, sy = (srcH - side) / 2;
+  pctx.imageSmoothingEnabled = true;
+  pctx.imageSmoothingQuality = 'high';
+  pctx.clearRect(0, 0, S, S);
+  pctx.drawImage(src, sx, sy, side, side, 0, 0, S, S);
+  const { data } = pctx.getImageData(0, 0, S, S);
+  const [mR, mG, mB] = spec.mean, [sR, sG, sB] = spec.std;
+  const plane = S * S;
+  const t = new Float32Array(3 * plane);
+  for (let i = 0, p = 0; i < plane; i++, p += 4) {
+    t[i]             = (data[p]     / 255 - mR) / sR;
+    t[plane + i]     = (data[p + 1] / 255 - mG) / sG;
+    t[2 * plane + i] = (data[p + 2] / 255 - mB) / sB;
+  }
+  return new ort.Tensor('float32', t, [1, 3, S, S]);
+}
+
+async function runInference(src, srcW, srcH) {
+  const input = sourceToTensor(src, srcW, srcH);
+  const feeds = session.inputNames.length > 1
+    ? Object.fromEntries(session.inputNames.map(n => [n, n === inputName ? input : new ort.Tensor('float32', new Float32Array(1), [1])]))
+    : { [inputName]: input };
+  const results = await session.run(feeds);
+  const out = results[outputName];
+  const raw = Array.from(out.data.slice ? out.data.slice(0, spec.classes.length) : out.data);
+  if (raw.length !== spec.classes.length) throw new Error(`model returned ${raw.length} values for ${spec.classes.length} classes`);
+  const sum = raw.reduce((a, b) => a + b, 0);
+  const nonNeg = raw.every(v => v >= -1e-9);
+  let probs;
+  if (Math.abs(sum - 1) < 1e-3 && nonNeg) {
+    probs = raw.map(v => Math.max(0, v));                       // head already emits probabilities
+  } else {
+    const mx = Math.max(...raw), e = raw.map(v => Math.exp(v - mx)), es = e.reduce((a, b) => a + b, 0);
+    probs = e.map(v => v / es);                                 // logits -> softmax
+  }
+  const total = probs.reduce((a, b) => a + b, 0) || 1;
+  return probs.map(v => v / total);
+}
+
+/* ---------------- rendering ---------------- */
+function buildRows() {
+  const ol = $('results');
+  ol.innerHTML = '';
+  spec.classes.forEach((name, i) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<div class="lab"><span class="name" data-i="${i}"></span><span class="p" data-i="${i}">—</span></div>
+                    <div class="track"><div class="fill" data-i="${i}"></div></div>`;
+    li.querySelector('.name').textContent = name;
+    ol.appendChild(li);
+  });
+}
+function render(probs) {
+  lastProbs = probs;
+  const top = probs.indexOf(Math.max(...probs));
+  spec.classes.forEach((_, i) => {
+    const pct = probs[i] * 100;
+    const txt = pct >= 99.95 ? '100.0 %' : pct >= 0.05 ? pct.toFixed(1) + ' %' : pct.toExponential(1) + ' %';
+    const p = document.querySelector(`.p[data-i="${i}"]`);
+    const f = document.querySelector(`.fill[data-i="${i}"]`);
+    const n = document.querySelector(`.name[data-i="${i}"]`);
+    if (p) p.textContent = txt;
+    if (f) { f.style.width = Math.max(pct, probs[i] > 0 ? 0.6 : 0) + '%'; f.classList.toggle('top', i === top); }
+    if (n) n.classList.toggle('top', i === top);
+  });
+}
+
+/* ---------------- camera ---------------- */
+async function startCamera() {
+  if (stream) return;
+  if (!navigator.mediaDevices?.getUserMedia) {
+    setStatus('This browser has no camera API here. Use the photo picker below (camera needs HTTPS — open the Pages URL).', 'err');
+    return;
+  }
+  $('start').disabled = true;
+  setStatus('Requesting camera…');
+  const tries = [
+    { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 1280 } }, audio: false },
+    { video: { facingMode: 'environment' }, audio: false },
+    { video: true, audio: false },
+  ];
+  let lastErr;
+  for (const constraints of tries) {
+    try { stream = await navigator.mediaDevices.getUserMedia(constraints); lastErr = null; break; }
+    catch (e) { lastErr = e; }
+  }
+  if (lastErr) {
+    $('start').disabled = false;
+    const hint = lastErr.name === 'NotAllowedError'
+      ? 'Camera permission denied. Tap “aA” in the address bar → allow camera, or use the photo picker.'
+      : lastErr.name === 'NotFoundError' ? 'No camera found. Use the photo picker below.'
+      : `${lastErr.name}: ${lastErr.message}`;
+    setStatus(hint, 'err');
+    return;
+  }
+  video.srcObject = stream;
+  await new Promise(res => video.readyState >= 1 ? res() : video.addEventListener('loadedmetadata', res, { once: true }));
+  try { await video.play(); } catch (e) { console.warn('play() rejected:', e); }
+  $('stop').disabled = false;
+  const s = stream.getVideoTracks()[0]?.getSettings?.() || {};
+  setStatus(`Live · rear camera ${s.width ?? video.videoWidth}×${s.height ?? video.videoHeight}, facing ${s.facingMode ?? 'environment'}`);
+  lastRun = 0;
+  cancelAnimationFrame(rafId);
+  rafId = requestAnimationFrame(tick);
+}
+
+async function tick() {
+  rafId = requestAnimationFrame(tick);
+  if (busy || !session || video.readyState < 2 || !video.videoWidth) return;
+  const now = performance.now();
+  if (now - lastRun < 180) return;                 // ~5 inferences/s, keeps the phone cool
+  lastRun = now;
+  busy = true;
+  try { render(await runInference(video, video.videoWidth, video.videoHeight)); }
+  catch (e) { setStatus(`Inference failed: ${e.message}`, 'err'); cancelAnimationFrame(rafId); }
+  finally { busy = false; }
+}
+
+function stopCamera() {
+  cancelAnimationFrame(rafId);
+  stream?.getTracks().forEach(t => t.stop());
+  stream = null; video.srcObject = null;
+  $('start').disabled = false; $('stop').disabled = true;
+  setStatus('Camera stopped. Pick a photo, or start again.');
+}
+
+/* ---------------- photo fallback ---------------- */
+async function classifyFile(file) {
+  if (!file) return;
+  if (!session) { setStatus('Model still loading — one moment.', 'warn'); return; }
+  setStatus(`Classifying “${file.name}”…`);
+  setStatus('');
+  let bitmap;
+  try {
+    if ('createImageBitmap' in window) bitmap = await createImageBitmap(file);
+    else bitmap = await loadViaImg(URL.createObjectURL(file));
+  } catch (e) { setStatus(`Could not decode that image: ${e.message}`, 'err'); return; }
+  try {
+    render(await runInference(bitmap, bitmap.width, bitmap.height));
+    setStatus(`Done · ${bitmap.width}×${bitmap.height} centre square · live camera still available above.`);
+  } catch (e) { setStatus(`Inference failed: ${e.message}`, 'err'); }
+  finally { bitmap.close?.(); }
+}
+function loadViaImg(url) {
+  return new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => res(im); im.onerror = () => rej(new Error('bad image'));
+    im.src = url;
+  });
+}
+
+/* ---------------- QR (generated in-browser) ---------------- */
+function renderQR(text) {
+  const link = $('qrlink');
+  link.href = text; link.textContent = text;
+  const canvas = $('qrcanvas');
+  try {
+    if (typeof qrcode !== 'function') throw new Error('qrcode library not loaded');
+    const qr = qrcode(0, 'M');                 // auto version, medium error correction
+    qr.addData(text);
+    qr.make();
+    const count = qr.getModuleCount();
+    const quiet = 4;                           // spec requires a 4-module quiet zone
+    // Draw at the size it is actually displayed (times devicePixelRatio) rather than
+    // oversampling and letting CSS shrink it: a non-integer shrink factor with
+    // image-rendering:pixelated gives modules of uneven width and hurts scanability.
+    const css = 168;                                             // matches #qrcanvas
+    const px = Math.round(css * Math.min(window.devicePixelRatio || 1, 3));
+    canvas.width = canvas.height = px;
+    const m = px / (count + quiet * 2);                          // module size, fractional
+    const c = canvas.getContext('2d');
+    c.fillStyle = '#ffffff'; c.fillRect(0, 0, px, px);
+    c.fillStyle = '#000000';
+    for (let r = 0; r < count; r++) for (let col = 0; col < count; col++) {
+      if (!qr.isDark(r, col)) continue;
+      // Round the cell edges, not each cell's width, so neighbours stay uniform.
+      const x0 = Math.round((col + quiet) * m), x1 = Math.round((col + quiet + 1) * m);
+      const y0 = Math.round((r + quiet) * m), y1 = Math.round((r + quiet + 1) * m);
+      c.fillRect(x0, y0, x1 - x0, y1 - y0);
+    }
+    // Prove the code really encodes the live URL, straight from what we just drew.
+    window.__qrEncoded = text; window.__qrModules = count;
+  } catch (e) {
+    $('qrnote').textContent = `QR could not be drawn (${e.message}). The link above still works.`;
+  }
+}
+
+/* ---------------- automation / acceptance hook ---------------- */
+window.__leaf = {
+  APP_URL,
+  get ready() { return !!session; },
+  get spec() { return { ...spec, specFromDisk, inputName, outputName }; },
+  get probs() { return lastProbs; },
+  predictFromFile: async (file) => {
+    const b = await createImageBitmap(file);
+    try { const p = await runInference(b, b.width, b.height); render(p); return p; } finally { b.close?.(); }
+  },
+  predictFromUrl: async (href) => {
+    const blob = await (await fetch(href)).blob();
+    return window.__leaf.predictFromFile(new File([blob], 'probe.jpg', { type: blob.type }));
+  },
+};
+
+// `?selftest=1` runs the bundled sample against the reference numbers, if both files are
+// present next to this page (they are served locally for testing; they are not published).
+async function maybeSelfTest() {
+  if (new URLSearchParams(location.search).get('selftest') !== '1') return;
+  const out = $('selftest');
+  try {
+    const [imgRes, expRes] = await Promise.all([
+      fetch('check_image.jpg'), fetch('check_expected.json'),
+    ]);
+    if (!imgRes.ok || !expRes.ok) { out.textContent = 'self-test: check files not present here'; return; }
+    const expected = await expRes.json();
+    const probs = await window.__leaf.predictFromUrl('check_image.jpg');
+    const lines = spec.classes.map((c, i) => {
+      const e = expected[c], got = probs[i];
+      const d = Math.abs(e - got);
+      return `${c.padEnd(9)} expected ${String(e.toExponential(6)).padStart(13)}  got ${String(got.toExponential(6)).padStart(13)}  |Δ| ${d.toExponential(2)}`;
+    });
+    const worst = Math.max(...spec.classes.map((c, i) => Math.abs(expected[c] - probs[i])));
+    out.textContent = `\n--- self-test (worst |Δ| = ${worst.toExponential(3)}) ---\n${lines.join('\n')}\n` +
+      (worst < 0.02 ? 'RESULT: matches check_expected.json' : 'RESULT: DOES NOT match');
+  } catch (e) { out.textContent = 'self-test failed: ' + e.message; }
+}
+
+/* ---------------- boot ---------------- */
+$('start').addEventListener('click', () => startCamera());      // user gesture: required on iOS
+$('stop').addEventListener('click', stopCamera);
+$('file').addEventListener('change', (e) => classifyFile(e.target.files[0]));
+
+(async function boot() {
+  try {
+    await loadOrt();
+    await loadSpec();
+    buildRows();
+    renderQR(APP_URL);
+    setStatus('Loading model…');
+    await loadModel();
+    setStatus('Ready. Tap “Start camera”, or choose a photo.');
+    maybeSelfTest();
+  } catch (e) {
+    console.error(e);
+    setStatus(`Setup failed: ${e.message}`, 'err');
+    buildRows(); renderQR(APP_URL);
+  }
+})();
+</script>
+</body>
+</html>
