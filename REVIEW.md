@@ -3,7 +3,7 @@
 First, I opened the live GitHub Pages link on my phone and allowed access to the camera. Everything worked straight away. The camera opened without any issues, and the live video appeared clearly at full resolution with no noticeable lag or stuttering.
 I also tested it using leaf images displayed on my computer screen. The model immediately recognized them correctly, predicting maple with 92.8% confidence and cherry with 98.5%. The progress bars also updated smoothly in real time, showing the results as they changed.
 
-!Screenshot_20261105_193918_Samsung_Browser.jpg
+![Maple screenshot]()
 
 
 
