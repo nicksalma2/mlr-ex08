@@ -1,0 +1,3 @@
+variant,seed,group_best,group_final,held_out_hist,held_out_balanced,seconds
+D0 group only,1,0.8214,0.8214,0.5720,0.5720,65
+D1 group + historical,1,0.8214,0.8214,0.8517,0.8517,388

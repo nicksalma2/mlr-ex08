@@ -1,0 +1,2 @@
+variant,seed,final_val,best_val,balanced_val,camera_like,tta_val,hist_holdout,hist_holdout_balanced,seconds
+BEST,0,0.7500,0.8214,0.7125,0.7143,0.7857,nan,nan,644
